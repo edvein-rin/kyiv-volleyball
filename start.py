@@ -5,110 +5,120 @@
 
 import json
 
-from googletrans import Translator
-import pymorphy2
+from constants import METRO_STATIONS_MORPHED_FILE
+from helpers import is_sub_in_text
 
 
 TELEGRAM_CHAT_EXPORT_RESULT_FILE_PATH = '/home/edvein-rin/\
 Downloads/ChatExport_2022-01-15/result.json'
-
-translator = Translator()
-morph = pymorphy2.MorphAnalyzer()
+SHOW_WARNINGS = False
 
 
-def translate(text):
-    return translator.translate(text).text
+def find_metro_mentions_in_message(message, metro_stations):
+    metro_mentions = []
+    for metro_station_key, metro_station_names in metro_stations.items():
+        for metro_station_name in metro_station_names:
+            if (is_sub_in_text(metro_station_name, message)):
+                metro_mentions.append(metro_station_key)
+
+    if (metro_mentions):
+        return metro_mentions
+
+    if (SHOW_WARNINGS):
+        metro_prefixes = ['м.', 'метро', 'станция',
+                          'станцию', 'станции', 'станцие']
+        for prefix in metro_prefixes:
+            if (is_sub_in_text(prefix, message)):
+                print(
+                    'WARNING Metro name possibly was\'nt ' +
+                    f'recognized in the message below:\n{message}\n')
+
+    return []
 
 
-def morph_word(word, gramema='loct'):
-    parsed_word = morph.parse(word)[0]
-    if (parsed_word):
-        inflected_word = parsed_word.inflect({gramema})
-        if (inflected_word):
-            return inflected_word.word
+def analyze_metro_mentions(messages):
+    with open(METRO_STATIONS_MORPHED_FILE, 'r') as f:
+        morphed_metro_stations = json.load(f)
 
-    return word
+        metro_mentions = {}
+        number_of_metro_mentions = 0
+
+        for message in messages:
+            metro_mentions_in_message = find_metro_mentions_in_message(
+                message, morphed_metro_stations)
+            if (len(metro_mentions_in_message) != 0):
+                number_of_metro_mentions += 1
+
+            for mentioned_metro in metro_mentions_in_message:
+                if (mentioned_metro not in metro_mentions):
+                    metro_mentions[mentioned_metro] = []
+                metro_mentions[mentioned_metro].append(message)
+
+        print('Количество сообщений где упоминали названия метро: ' +
+              str(number_of_metro_mentions))
+
+        messages_per_metro = {}
+        for metro_name, messages in metro_mentions.items():
+            messages_per_metro[metro_name] = len(messages)
+
+        print('Станции метро отсортированные по количеству упоминаний:')
+        for metro in sorted(messages_per_metro,
+                            key=messages_per_metro.get,
+                            reverse=True):
+            number_of_messages = messages_per_metro[metro]
+            print(f'{metro}: {number_of_messages}')
 
 
-def is_word_in_text(text, word):
-    def conditions(word):
-        return any([
-            text.startswith(word + ' '),
-            text.endswith(' ' + word),
-            text.find(' ' + word + ' ') != -1,
-        ])
-
-    word_cases = [word.lower(), word, word.capitalize()]
-
-    for word_in_case in word_cases:
-        word_morphs = set([word_in_case, morph_word(word_in_case)])
-        for word_morph in word_morphs:
-            if conditions(word_morph):
-                return word_morph
-
-    return False
-
-
-def has_message_underground_mentions(message):
-    underground_names = ['м.', 'метро']
-    metro_stations = [
-        'Академгородок', 'Академмістечко', 'Житомирская', 'Житомирська', 'Святошин', 'Святошин', 'Нивки', 'Нивки', 'Берестейская', 'Берестейська', 'Шулявская', 'Шулявська', 'Политехнический институт', 'Політехнічний інститут', 'Вокзальная', 'Вокзальна', 'Университет', 'Університет', 'Театральная', 'Театральна', 'Крещатик', 'Хрещатик', 'Арсенальная', 'Арсенальна', 'Днепр', 'Дніпро', 'Гидропарк', 'Гідропарк', 'Левобережная', 'Лівобережна', 'Дарница', 'Дарниця', 'Черниговская', 'Чернігівська', 'Лесная', 'Лісова', 'Героев Днепра', 'Героїв Дніпра', 'Минская', 'Мінська', 'Оболонь', 'Оболонь', 'Почайна', 'Почайна', 'Тараса Шевченко', 'Тараса Шевченка', 'Контрактовая площадь', 'Контрактова площа', 'Почтовая площадь', 'Поштова площа', 'Площадь Независимости', 'Майдан Незалежності', 'Площадь Льва Толстого', 'Площа Льва Толстого', 'Олимпийская', 'Олімпійська', 'Дворец Украина', 'Палац «Україна»', 'Лыбедская', 'Либідська', 'Демиевская', 'Деміївська', 'Голосеевская', 'Голосіївська', 'Васильковская', 'Васильківська', 'Выставочный центр', 'Виставковий центр', 'Ипподром', 'Іподром', 'Теремки', 'Теремки', 'Сырец', 'Сирець', 'Дорогожичи', 'Дорогожичі', 'Лукьяновская', "Лук'янівська", 'Золотые ворота', 'Золоті ворота', 'Дворец спорта', 'Палац спорту', 'Кловская', 'Кловська', 'Печерская', 'Печерська', 'Дружбы народов', 'Дружби народів', 'Выдубичи', 'Видубичі', 'Славутич', 'Славутич', 'Осокорки', 'Осокорки', 'Позняки', 'Позняки', 'Харьковская', 'Харківська', 'Вырлица', 'Вирлиця', 'Бориспольская', 'Бориспільська', 'Красный хутор', 'Червоний хутір'
+def analyze_streets_mentions(messages):
+    street_prefixes = [
+        'вул.', 'вулиця', 'вулиці',
+        'ул.', 'улица', 'улицы', 'улице',
+        'адрес', 'адресу', 'адреса', 'адресс',
+        'адресі',
+        'проспект', 'проспекту', 'проспекте',
+        'проспекті',
+        'бульвар', 'бульваре', 'бульвару',
+        'бульварі',
+        'переулок', 'переулку',
     ]
-    casual_metro_stations = [
-        'Академ', 'Шулявка', 'Политех', 'Політех', 'Вокзал', 'Универ', 'Універ', 'Героев', 'Героїв', 'Контрактовая', 'Контрактова', 'Почтовая', 'Почтова', 'Голосеево', 'Голосіїва', 'Иподром', 'Левобережна', 'Житомирска', 'Житомирська', 'Берестейска', 'Голосеевска', 'Васильковска', 'Лукьяновска', 'Кловска', 'Печерска', 'Харьковска', 'Бориспольска', 'Демієвська',
-    ]
-    words_to_search = metro_stations + casual_metro_stations + underground_names
-    for word in words_to_search:
-        word_in_text = is_word_in_text(message, word)
-        if (word_in_text):
-            print(word_in_text, message)
-            return True
-
-    return False
+    number_of_messages_with_streets = 0
+    for message in messages:
+        for street_prefix in street_prefixes:
+            if is_sub_in_text(street_prefix, message):
+                number_of_messages_with_streets += 1
+    print('Количество сообщений где упоминали ' +
+          f'названия улиц: {number_of_messages_with_streets}')
 
 
 def analyze_messages(messages):
-    underground_mentions = []
-    for message in messages:
-        if has_message_underground_mentions(message):
-            underground_mentions.append(message)
-
-    number_of_underground_mentions = len(underground_mentions)
-    print(f'Number of messages \
-with underground mentions: {number_of_underground_mentions}')
-
-    # test_message = underground_mentions[0]
-    # translated_test_message = translate(test_message)
-    # print(test_message)
-    # print(translated_test_message)
+    analyze_metro_mentions(messages)
+    analyze_streets_mentions(messages)
 
 
 def main():
-    with open(TELEGRAM_CHAT_EXPORT_RESULT_FILE_PATH) as file:
-        messages = json.loads(file.read())['messages']
+    with open(TELEGRAM_CHAT_EXPORT_RESULT_FILE_PATH, 'r') as f:
+        messages = json.load(f)['messages']
 
         text_messages = []
-        for message in messages[:600]:
+        for message in messages:
             text = message['text']
             if message['type'] == 'message':
                 if isinstance(text, str):
                     if text != '':
                         text_messages.append(text)
                 elif isinstance(text, list):
-                    text_messages.append(
-                        ''.join([text_part if isinstance(text_part, str) else '' for text_part in text]))
+                    text_message = ''.join([text_part if isinstance(
+                        text_part, str) else '' for text_part in text])
+                    text_messages.append(text_message)
                 else:
                     raise('error')
 
         number_of_text_messages = len(text_messages)
-        print(f'Overall number of text messages: {number_of_text_messages}')
+        print('Количество сообщений в чате: ' +
+              str(number_of_text_messages))
 
         analyze_messages(text_messages)
 
 
 if __name__ == '__main__':
     main()
-
-# Metro stations were parsed via browser parser and this shit below
-# sum([[metro.split('(')[0], metro.split('(')[1][5:-1]]
-#      for metro in metro_stations.split('\n')[1:-1]], [])

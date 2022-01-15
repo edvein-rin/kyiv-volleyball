@@ -1,3 +1,2 @@
-googletrans==3.1.0a0
 pymorhpy2
 pymorphy2-dicts-uk
